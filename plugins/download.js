@@ -1,11 +1,12 @@
 const { cmd } = require("../command");
 const axios = require("axios");
+const mimes = require("mime-types");
 
 cmd(
   {
     pattern: "download",
     alias: ["direct", "dl"],
-    desc: "Download files from a direct link without small limits",
+    desc: "Download files with reactions and better naming",
     category: "download",
     filename: __filename,
   },
@@ -16,34 +17,47 @@ cmd(
       const isUrl = /^(https?:\/\/[^\s]+)/i.test(q);
       if (!isUrl) return reply("❌ මෙය වලංගු ලින්ක් එකක් නොවේ.");
 
-      reply("⬇️ ලොකු ෆයිල් එකක් නම් බාගත වීමට මද වෙලාවක් ගතවේවි. කරුණාකර රැඳී සිටින්න...");
+      // 1. Reaction එකක් එකතු කිරීම
+      await bot.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
       // Headers ලබා ගැනීම
       const response = await axios.head(q);
       const mimeType = response.headers["content-type"];
       const fileSize = response.headers["content-length"];
 
-      // මෙහි 2000 * 1024 * 1024 යනු දළ වශයෙන් 2GB වේ.
       if (fileSize > 2000 * 1024 * 1024) {
-        return reply("❌ ගොනුව 2GB ට වඩා වැඩියි. WhatsApp මගින් එවිය නොහැක.");
+        await bot.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        return reply("❌ ගොනුව 2GB ට වඩා වැඩියි.");
       }
 
-      const fileName = q.split("/").pop().split("?")[0] || "file_download";
+      // 2. File Extension එක නිවැරදිව හදාගැනීම
+      let extension = mimes.extension(mimeType) || "bin";
+      let fileName = q.split("/").pop().split("?")[0] || "file";
+      
+      // නමේ අගට extension එක නැත්නම් එකතු කිරීම
+      if (!fileName.endsWith(`.${extension}`)) {
+        fileName = `${fileName}.${extension}`;
+      }
 
+      // ෆයිල් එක යැවීම
       await bot.sendMessage(
         from,
         {
-          document: { url: q }, // මෙහි Direct URL එක දීමෙන් බොට්ගේ RAM එකට ලොකු බලපෑමක් නොවී යැවිය හැක
+          document: { url: q },
           mimetype: mimeType,
           fileName: fileName,
-          caption: `✅ *Download Complete*\n\n📂 *File:* ${fileName}\n⚖️ *Size:* ${(fileSize / (1024 * 1024)).toFixed(2)} MB`,
+          caption: `✅ *Download Success*\n\n📂 *File:* ${fileName}\n⚖️ *Size:* ${(fileSize / (1024 * 1024)).toFixed(2)} MB`,
         },
         { quoted: mek }
       );
 
+      // 3. සාර්ථක වූ පසු Reaction එක වෙනස් කිරීම
+      await bot.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
     } catch (e) {
       console.log("DOWNLOAD ERROR:", e);
-      reply("❌ බාගත කිරීමේදී දෝෂයක් සිදු විය. සමහරවිට සර්වර් එකෙන් ලොකු ෆයිල් බ්ලොක් කරනවා විය හැක.");
+      await bot.sendMessage(from, { react: { text: "❌", key: mek.key } });
+      reply("❌ දෝෂයක් සිදු විය. ලින්ක් එක පරීක්ෂා කරන්න.");
     }
   }
 );
