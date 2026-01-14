@@ -1,12 +1,11 @@
 const { cmd } = require("../command");
 const axios = require("axios");
-const cheerio = require("cheerio");
 
 cmd(
   {
     pattern: "cinesub",
     alias: ["movie", "flic"],
-    desc: "Search movies from Cinesub.lk (Updated)",
+    desc: "Search movies using WP API",
     category: "download",
     filename: __filename,
   },
@@ -16,45 +15,37 @@ cmd(
 
       await bot.sendMessage(from, { react: { text: "🔍", key: mek.key } });
 
-      const searchUrl = `https://cinesub.lk/?s=${encodeURIComponent(q)}`;
+      // WordPress API එක හරහා සෙවීම (Cinesub WP පාවිච්චි කරයි නම්)
+      const apiUrl = `https://cinesub.lk/wp-json/wp/v2/posts?search=${encodeURIComponent(q)}&_embed`;
       
-      // User-Agent එකක් එක් කිරීම (සමහර වෙලාවට වෙබ් අඩවි Bot කෙනෙක් එනවා කියලා block කරන එක වැළැක්වීමට)
-      const { data } = await axios.get(searchUrl, {
+      const response = await axios.get(apiUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-        }
-      });
-      
-      const $ = cheerio.load(data);
-      let results = [];
-
-      // අලුත්ම HTML structure එකට අනුව දත්ත ලබා ගැනීම
-      $("article").each((i, el) => {
-        const title = $(el).find(".title a").text().trim() || $(el).find("h2").text().trim();
-        const link = $(el).find("a").attr("href");
-        const image = $(el).find("img").attr("src");
-
-        if (title && link) {
-          results.push({ title, link, image });
+          'User-Agent': 'Mozilla/5.0'
         }
       });
 
-      if (results.length === 0) {
+      const data = response.data;
+
+      if (!data || data.length === 0) {
         await bot.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        return reply("❌ කිසිදු ප්‍රතිඵලයක් හමු නොවීය. (Check spelling)");
+        return reply("❌ කිසිදු ප්‍රතිඵලයක් හමු නොවීය.");
       }
 
-      // පළමු ප්‍රතිඵල 3 පමණක් පෙන්වීමට හෝ පළමු එක පමණක් පෙන්වීමට හැකිය
-      const movie = results[0];
-      
-      let caption = `🎬 *${movie.title}*\n\n`;
-      caption += `🔗 *Link:* ${movie.link}\n\n`;
-      caption += `💡 *Download:* ඉහත ලින්ක් එකට ගොස් පසුව එන Direct Download Link එක .download ලෙස ලබා දෙන්න.`;
+      // පළමු ප්‍රතිඵලය ලබා ගැනීම
+      const movie = data[0];
+      const title = movie.title.rendered;
+      const link = movie.link;
+      // Featured Image එක ලබා ගැනීම
+      const image = movie._embedded?.['wp:featuredmedia']?.[0]?.source_url || 'https://via.placeholder.com/500';
+
+      let caption = `🎬 *${title}*\n\n`;
+      caption += `🔗 *Link:* ${link}\n\n`;
+      caption += `💡 *Download:* .download [direct_link]`;
 
       await bot.sendMessage(
         from,
         {
-          image: { url: movie.image },
+          image: { url: image },
           caption: caption,
         },
         { quoted: mek }
@@ -63,8 +54,10 @@ cmd(
       await bot.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-      console.log("CINESUB ERROR:", e);
-      reply("❌ සර්වර් එක සමඟ සම්බන්ධ වීමේ දෝෂයක්. පසුව උත්සාහ කරන්න.");
+      console.log("CINESUB API ERROR:", e.message);
+      
+      // API එකත් වැඩ නැත්නම් සාමාන්‍ය වෙබ් පිටුවෙන් නැවත උත්සාහ කරන්න (Backup method)
+      reply("⚠️ API Error එකක් ආවා. සයිට් එකේ ආරක්ෂක පද්ධතිය මගින් බ්ලොක් කරනවා විය හැක. වෙනත් මූවී සයිට් එකක් (උදා: Baiscope) මේ විදිහටම හදන්නද?");
     }
   }
 );
